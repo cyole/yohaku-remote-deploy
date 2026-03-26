@@ -71,16 +71,15 @@ Dokploy Dashboard → Profile → Generate API Key
 | `DOKPLOY_API_TOKEN` | Dokploy 生成的 API Key |
 | `DOKPLOY_APP_ID` | Dokploy Application ID |
 | `AFTER_DEPLOY_SCRIPT` | (可选) 部署后执行的脚本 |
-| `NEXT_PUBLIC_API_URL` | Docker 构建阶段传入，需与 Dokploy / 运行时配置一致（见下节） |
-| `NEXT_PUBLIC_GATEWAY_URL` | 同上 |
+| `BASE_URL` | Docker **build-arg**，站点根 URL（建议无尾部斜杠）；与私有 `Dockerfile` 中 `ARG BASE_URL` 一致 |
 
-#### `NEXT_PUBLIC_*` 与构建（含 ISR）
+#### `BASE_URL`、ISR 与 `NEXT_PUBLIC_*`
 
-CI 在构建镜像时通过 **build-arg** 将 `NEXT_PUBLIC_API_URL`、`NEXT_PUBLIC_GATEWAY_URL` 注入 `next build`。请与容器/应用在 Dokploy 中配置的同名变量保持一致。
+当前 Shiroi `Dockerfile` 典型写法为：`ARG BASE_URL`，并在 builder 阶段令 `NEXT_PUBLIC_GATEWAY_URL=${BASE_URL}`、`NEXT_PUBLIC_API_URL=${BASE_URL}/api/v2`。CI 只需传入 **`BASE_URL`** 作为 build-arg，`next build` 即可得到一致的公开端点。
 
-若站点启用 **ISR**（增量静态再生成），构建期或再验证会依赖这些端点；`NEXT_PUBLIC_*` 又会在编译阶段进入前端 bundle。未配置或配置错误会导致预渲染/ISR 页面指向错误 API。**仅依赖运行时的容器环境变量而不在镜像构建中传入，无法修复已写入 bundle 的构建期取值**，因此这两个 Secret 是镜像构建的必配项。
+若站点启用 **ISR**，构建期仍会按上述 URL 访问后端；仅依赖运行时的容器环境变量无法覆盖已写入 bundle 的构建期取值，因此 **`BASE_URL` 必须在镜像构建时传入**，并与 Dokploy 中运行时配置的站点根 URL 一致。
 
-确保 Shiroi 的 `Dockerfile` 中已对上述变量使用 `ARG`（及对应的 `ENV`，按项目模板即可），否则请在私有仓库中补齐 Dockerfile 后再构建。
+构建期密钥类变量（如 `S3_*`、`TMDB_API_KEY`、`GH_TOKEN`、`WEBHOOK_SECRET`）在 `Dockerfile` 中多为独立 `ARG`，若构建命令需要它们，请在 **同一 `build-args` 块**中增加对应 Secrets（勿写入仓库明文）。
 
 ### 3. 创建 GitHub PAT
 
