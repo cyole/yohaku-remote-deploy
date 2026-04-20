@@ -1,0 +1,73 @@
+name: Sync Yohaku
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '50 23 * * *'
+      timezone: 'Asia/Shanghai'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_REPO: innei-dev/yohaku
+  SYNC_REPO: cyole/yohaku
+  SYNC_BRANCH: main
+
+jobs:
+  sync:
+    name: Sync upstream to personal repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout upstream Yohaku
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ env.SYNC_BRANCH }}
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+          lfs: true
+
+      - name: Fetch main branch, tags, and LFS objects
+        run: |
+          git fetch --prune --prune-tags origin \
+            "+refs/heads/${{ env.SYNC_BRANCH }}:refs/remotes/origin/${{ env.SYNC_BRANCH }}"
+          git fetch --prune --prune-tags origin \
+            '+refs/tags/*:refs/tags/*'
+          git lfs fetch origin "${{ env.SYNC_BRANCH }}"
+
+      - name: Mirror main branch and tags to personal repo
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SYNC_REPO: ${{ env.SYNC_REPO }}
+        run: |
+          current_sha=$(git rev-parse "refs/remotes/origin/${{ env.SYNC_BRANCH }}")
+          current_hash=$(git rev-parse --short "refs/remotes/origin/${{ env.SYNC_BRANCH }}")
+
+          git remote add personal "https://x-access-token:${GH_PAT}@github.com/${SYNC_REPO}.git"
+          git push --force-with-lease personal \
+            "refs/remotes/origin/${{ env.SYNC_BRANCH }}:refs/heads/${{ env.SYNC_BRANCH }}"
+          git push --prune personal 'refs/tags/*:refs/tags/*'
+          git lfs push --all personal "${{ env.SYNC_BRANCH }}"
+
+          echo "Mirrored ${SYNC_REPO}@${{ env.SYNC_BRANCH }} and tags to ${current_sha} (${current_hash})"
+
+      - name: Trigger build workflow
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          curl --fail -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_PAT}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/dispatches" \
+            -d '{"event_type":"trigger-workflow"}'
