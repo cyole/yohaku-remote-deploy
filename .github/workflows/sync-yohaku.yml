@@ -54,6 +54,8 @@ jobs:
           current_hash=$(git rev-parse --short "refs/remotes/origin/${{ env.SYNC_BRANCH }}")
 
           git remote add personal "https://x-access-token:${GH_PAT}@github.com/${SYNC_REPO}.git"
+          git fetch personal "${SYNC_BRANCH}"
+          
           git push --force-with-lease personal \
             "refs/remotes/origin/${{ env.SYNC_BRANCH }}:refs/heads/${{ env.SYNC_BRANCH }}"
           git push --prune personal 'refs/tags/*:refs/tags/*'
